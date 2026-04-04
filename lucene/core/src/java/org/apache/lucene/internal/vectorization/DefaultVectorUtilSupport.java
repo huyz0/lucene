@@ -463,4 +463,103 @@ final class DefaultVectorUtilSupport implements VectorUtilSupport {
       arr[192 + i] = l & 0xFF;
     }
   }
+
+  @Override
+  public void rotorQuantRotate(float[] vector, float[] codebook) {
+    int blocks = vector.length / 4;
+    for (int b = 0; b < blocks; b++) {
+      int vOff = b * 4;
+      int cOff = b * 16;
+      float x = vector[vOff];
+      float y = vector[vOff + 1];
+      float z = vector[vOff + 2];
+      float w = vector[vOff + 3];
+
+      vector[vOff] =
+          fma(
+              codebook[cOff],
+              x,
+              fma(codebook[cOff + 4], y, fma(codebook[cOff + 8], z, codebook[cOff + 12] * w)));
+      vector[vOff + 1] =
+          fma(
+              codebook[cOff + 1],
+              x,
+              fma(codebook[cOff + 5], y, fma(codebook[cOff + 9], z, codebook[cOff + 13] * w)));
+      vector[vOff + 2] =
+          fma(
+              codebook[cOff + 2],
+              x,
+              fma(codebook[cOff + 6], y, fma(codebook[cOff + 10], z, codebook[cOff + 14] * w)));
+      vector[vOff + 3] =
+          fma(
+              codebook[cOff + 3],
+              x,
+              fma(codebook[cOff + 7], y, fma(codebook[cOff + 11], z, codebook[cOff + 15] * w)));
+    }
+  }
+
+  @Override
+  public float dotProductIsoQuant4Bit(byte[] packed, float[] query, float[] centroids, int dim) {
+    float d0 = 0f, d1 = 0f, d2 = 0f, d3 = 0f;
+    int i = 0;
+    
+    // Process 8 dimensions per loop iteration (4 bytes)
+    int limit = dim - (dim % 8);
+    for (; i < limit; i += 8) {
+        int b0 = packed[i >> 1] & 0xFF;
+        int b1 = packed[(i >> 1) + 1] & 0xFF;
+        int b2 = packed[(i >> 1) + 2] & 0xFF;
+        int b3 = packed[(i >> 1) + 3] & 0xFF;
+
+        d0 += query[i] * centroids[b0 >>> 4] + query[i + 1] * centroids[b0 & 0x0F];
+        d1 += query[i + 2] * centroids[b1 >>> 4] + query[i + 3] * centroids[b1 & 0x0F];
+        d2 += query[i + 4] * centroids[b2 >>> 4] + query[i + 5] * centroids[b2 & 0x0F];
+        d3 += query[i + 6] * centroids[b3 >>> 4] + query[i + 7] * centroids[b3 & 0x0F];
+    }
+    
+    // Scalar tail for any remaining dimensions
+    for (; i < dim; i += 2) {
+        int b = packed[i >> 1] & 0xFF;
+        d0 += query[i] * centroids[b >>> 4];
+        if (i + 1 < dim) {
+            d0 += query[i + 1] * centroids[b & 0x0F];
+        }
+    }
+    
+    return d0 + d1 + d2 + d3;
+  }
+
+  @Override
+  public float dotProductIsoQuant8Bit(byte[] packed, float[] query, float[] centroids, int dim) {
+    float dot = 0f;
+    for (int i = 0; i < dim; i++) {
+      dot += query[i] * centroids[packed[i] & 0xFF];
+    }
+    return dot;
+  }
+
+  @Override
+  public void byteShuffle(float[] source, byte[] dest) {
+    int dim = source.length;
+    for (int i = 0; i < dim; i++) {
+      int bits = Float.floatToRawIntBits(source[i]);
+      dest[i] = (byte) (bits >> 24);
+      dest[dim + i] = (byte) (bits >> 16);
+      dest[2 * dim + i] = (byte) (bits >> 8);
+      dest[3 * dim + i] = (byte) bits;
+    }
+  }
+
+  @Override
+  public void byteUnshuffle(byte[] source, float[] dest) {
+    int dim = dest.length;
+    for (int i = 0; i < dim; i++) {
+      int bits = ((source[i] & 0xFF) << 24)
+          | ((source[dim + i] & 0xFF) << 16)
+          | ((source[2 * dim + i] & 0xFF) << 8)
+          | (source[3 * dim + i] & 0xFF);
+      dest[i] = Float.intBitsToFloat(bits);
+    }
+  }
+
 }

@@ -165,4 +165,46 @@ public interface VectorUtilSupport {
    * beneficial here because the block size is 256.
    */
   void expand8(int[] arr);
+
+  /** Rotates a vector using 4D quaternion matrix blocks for RotorQuant. */
+  void rotorQuantRotate(float[] vector, float[] codebook);
+
+  /**
+   * Computes dot product from packed IsoQuant 4-bit vectors without a heavy memory look-up table.
+   *
+   * @param packed the packed 4-bit byte values
+   * @param query the pre-rotated query vector floats
+   * @param centroids the 16 centroid values 
+   * @param dim the vector dimension
+   * @return the un-scaled dot product
+   */
+  float dotProductIsoQuant4Bit(byte[] packed, float[] query, float[] centroids, int dim);
+
+  /**
+   * Computes dot product from packed IsoQuant 8-bit vectors.
+   *
+   * @param packed the packed 8-bit byte values
+   * @param query the pre-rotated query vector floats
+   * @param centroids the 256 centroid values
+   * @param dim the vector dimension
+   * @return the un-scaled dot product
+   */
+  float dotProductIsoQuant8Bit(byte[] packed, float[] query, float[] centroids, int dim);
+
+  /**
+   * Transposes bytes of an array of floats so that all 1st bytes are contiguous, followed by all 2nd bytes, etc.
+   * This improves the compression ratio for LZ4 block compression.
+   * 
+   * @param source the input float array
+   * @param dest the destination byte array of size {@code source.length * 4}
+   */
+  void byteShuffle(float[] source, byte[] dest);
+
+  /**
+   * Reverses the transposition done by {@link #byteShuffle(float[], byte[])}.
+   * 
+   * @param source the shuffled byte array
+   * @param dest the destination float array of size {@code source.length / 4}
+   */
+  void byteUnshuffle(byte[] source, float[] dest);
 }

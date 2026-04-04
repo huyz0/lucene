@@ -589,4 +589,52 @@ final class NativeVectorUtilSupport implements VectorUtilSupport {
         MemorySegment.ofArray(arr),
         arr.length);
   }
+
+  @Override
+  public void rotorQuantRotate(float[] vector, float[] codebook) {
+    delegateVectorUtilSupport.rotorQuantRotate(vector, codebook);
+  }
+
+  @Override
+  public float dotProductIsoQuant4Bit(byte[] packed, float[] query, float[] centroids, int dim) {
+    float dot = 0f;
+    for (int i = 0; i < dim; i += 2) {
+      int b = packed[i / 2] & 0xFF;
+      dot += query[i] * centroids[b >>> 4];
+      if (i + 1 < dim) {
+        dot += query[i + 1] * centroids[b & 0x0F];
+      }
+    }
+    return dot;
+  }
+
+  @Override
+  public float dotProductIsoQuant8Bit(byte[] packed, float[] query, float[] centroids, int dim) {
+    return delegateVectorUtilSupport.dotProductIsoQuant8Bit(packed, query, centroids, dim);
+  }
+
+
+  @Override
+  public void byteShuffle(float[] source, byte[] dest) {
+    int dim = source.length;
+    for (int i = 0; i < dim; i++) {
+        int bits = Float.floatToRawIntBits(source[i]);
+        dest[i] = (byte) (bits >> 24);
+        dest[dim + i] = (byte) (bits >> 16);
+        dest[2 * dim + i] = (byte) (bits >> 8);
+        dest[3 * dim + i] = (byte) bits;
+    }
+  }
+
+  @Override
+  public void byteUnshuffle(byte[] source, float[] dest) {
+    int dim = dest.length;
+    for (int i = 0; i < dim; i++) {
+        int bits = ((source[i] & 0xFF) << 24)
+            | ((source[dim + i] & 0xFF) << 16)
+            | ((source[2 * dim + i] & 0xFF) << 8)
+            | (source[3 * dim + i] & 0xFF);
+        dest[i] = Float.intBitsToFloat(bits);
+    }
+  }
 }

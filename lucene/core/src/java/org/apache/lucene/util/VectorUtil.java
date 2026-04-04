@@ -544,4 +544,56 @@ public final class VectorUtil {
   public static void expand8(int[] arr) {
     IMPL.expand8(arr);
   }
+
+  /**
+   * Rotates a vector using 4D quaternion matrix blocks for RotorQuant.
+   *
+   * @param vector the vector to rotate
+   * @param codebook the unit quaternion matrix blocks
+   */
+  public static void rotorQuantRotate(float[] vector, float[] codebook) {
+    IMPL.rotorQuantRotate(vector, codebook);
+  }
+
+  /**
+   * Computes dot product from packed IsoQuant 4-bit vectors without a heavy memory look-up table.
+   */
+  public static float dotProductIsoQuant4Bit(byte[] packed, float[] query, float[] centroids, int dim) {
+    return IMPL.dotProductIsoQuant4Bit(packed, query, centroids, dim);
+  }
+
+  /**
+   * Computes dot product from 8-bit IsoQuant vectors without a heavy memory look-up table.
+   */
+  public static float dotProductIsoQuant8Bit(byte[] packed, float[] query, float[] centroids, int dim) {
+    return IMPL.dotProductIsoQuant8Bit(packed, query, centroids, dim);
+  }
+
+  /**
+   * Transposes bytes of an array of floats so that all 1st bytes are contiguous, followed by all 2nd bytes, etc.
+   * This improves the compression ratio for LZ4 block compression.
+   *
+   * @param source the input float array
+   * @param dest the destination byte array of size {@code source.length * 4}
+   */
+  public static void byteShuffle(float[] source, byte[] dest) {
+    if (source.length * 4 != dest.length) {
+      throw new IllegalArgumentException("dest array must be exactly 4x the size of source array");
+    }
+    IMPL.byteShuffle(source, dest);
+  }
+
+  /**
+   * Reverses the transposition done by {@link #byteShuffle(float[], byte[])}.
+   *
+   * @param source the shuffled byte array
+   * @param dest the destination float array of size {@code source.length / 4}
+   */
+  public static void byteUnshuffle(byte[] source, float[] dest) {
+    if (source.length != dest.length * 4) {
+      throw new IllegalArgumentException("source array must be exactly 4x the size of dest array");
+    }
+    IMPL.byteUnshuffle(source, dest);
+  }
+
 }

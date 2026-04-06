@@ -120,7 +120,7 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
     int[][] segmentOldToNewOrds = new int[mergeState.knnVectorsReaders.length][];
     int[] segmentSizes = new int[mergeState.knnVectorsReaders.length];
     long[] segmentEdgePtrs = new long[mergeState.knnVectorsReaders.length];
-    long nodeBytes = (long) (Integer.BYTES + maxEdges * Integer.BYTES);
+    long nodeBytes = Integer.highestOneBit((Integer.BYTES + maxEdges * Integer.BYTES) - 1) << 1;
     IndexInput[] edgeInputs = new IndexInput[mergeState.knnVectorsReaders.length];
 
     for (int i = 0; i < mergeState.knnVectorsReaders.length; i++) {
@@ -405,6 +405,10 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
         }
       }
 
+      int nodeBytes = Integer.highestOneBit((Integer.BYTES + maxEdges * Integer.BYTES) - 1) << 1;
+      byte[] paddingBytesArr = new byte[nodeBytes];
+      java.util.Arrays.fill(paddingBytesArr, (byte) 0xFF);
+
       for (int ord = 0; ord < totalOrds; ord++) {
         int oldOrd = newOrdToOldOrd != null ? newOrdToOldOrd[ord] : ord;
         int validEdges = graph.getSortedNeighbors(oldOrd, neighborBuffer);
@@ -415,8 +419,9 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
               oldOrdToNewOrd != null ? oldOrdToNewOrd[neighborOldOrd] : neighborOldOrd;
           vectorEdgeOutput.writeInt(neighborNewOrd);
         }
-        for (int i = validEdges; i < maxEdges; i++) {
-          vectorEdgeOutput.writeInt(-1);
+        int paddingBytes = nodeBytes - (Integer.BYTES + validEdges * Integer.BYTES);
+        if (paddingBytes > 0) {
+            vectorEdgeOutput.writeBytes(paddingBytesArr, 0, paddingBytes);
         }
       }
 

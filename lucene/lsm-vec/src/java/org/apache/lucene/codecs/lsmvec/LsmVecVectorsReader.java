@@ -45,6 +45,7 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
   public static class FieldEntry {
     public int maxEdges;
     public long edgePtr;
+    public int[] entryNeighbors;
     public long vectorDataOffset;
     public long vectorDataLength;
     public int dimension;
@@ -118,6 +119,17 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
         entry.dimension = metaInput.readVInt();
         entry.size = metaInput.readInt();
         entry.ordToDoc = OrdToDocDISIReaderConfiguration.fromStoredMeta(metaInput, entry.size);
+
+        if (entry.size > 0) {
+            IndexInput initEdgeInput = vectorEdgeInput.clone();
+            initEdgeInput.seek(entry.edgePtr);
+            int entryNumNeighbors = initEdgeInput.readInt();
+            entry.entryNeighbors = new int[entryNumNeighbors];
+            for (int i = 0; i < entryNumNeighbors; i++) {
+                entry.entryNeighbors[i] = initEdgeInput.readInt();
+            }
+        }
+
         fields.put(fieldNumber, entry);
       }
 
@@ -211,7 +223,7 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
     FieldInfo fieldInfo = segmentReadState.fieldInfos.fieldInfo(field);
     FieldEntry entry = fields.get(fieldInfo.number);
     if (entry == null) return;
-    long nodeBytes = (long) (Integer.BYTES + entry.maxEdges * Integer.BYTES);
+    long nodeBytes = Integer.highestOneBit((Integer.BYTES + entry.maxEdges * Integer.BYTES) - 1) << 1;
 
     int N = segmentReadState.segmentInfo.maxDoc();
     int efSearch = (int) (knnCollector.k() * 1.5);
@@ -248,20 +260,41 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
         break;
       }
 
-      edgeInput.seek(entry.edgePtr + (long) topNodeOrd * nodeBytes);
-      int numNeighbors = edgeInput.readInt();
-      for (int i = 0; i < numNeighbors; i++) {
-        int neighborOrd = edgeInput.readInt();
-        int nDoc = ordToDoc.applyAsInt(neighborOrd);
-        if (!visited.getAndSet(nDoc)) {
-          knnCollector.incVisitedCount(1);
-          float s = scorer.score(neighborOrd);
+      if (topNodeOrd == 0 && entry.entryNeighbors != null) {
+        int numNeighbors = entry.entryNeighbors.length;
+        for (int i = 0; i < numNeighbors; i++) {
+          int neighborOrd = entry.entryNeighbors[i];
+          int nDoc = ordToDoc.applyAsInt(neighborOrd);
+          if (!visited.getAndSet(nDoc)) {
+            knnCollector.incVisitedCount(1);
+            float s = scorer.score(neighborOrd);
 
-          if (s >= minAcceptedSimilarity) {
-            candidates.add(neighborOrd, s);
-            if (acceptBits == null || acceptBits.get(nDoc)) {
-              if (knnCollector.collect(nDoc, s)) {
-                minAcceptedSimilarity = knnCollector.minCompetitiveSimilarity();
+            if (s >= minAcceptedSimilarity) {
+              candidates.add(neighborOrd, s);
+              if (acceptBits == null || acceptBits.get(nDoc)) {
+                if (knnCollector.collect(nDoc, s)) {
+                  minAcceptedSimilarity = knnCollector.minCompetitiveSimilarity();
+                }
+              }
+            }
+          }
+        }
+      } else {
+        edgeInput.seek(entry.edgePtr + (long) topNodeOrd * nodeBytes);
+        int numNeighbors = edgeInput.readInt();
+        for (int i = 0; i < numNeighbors; i++) {
+          int neighborOrd = edgeInput.readInt();
+          int nDoc = ordToDoc.applyAsInt(neighborOrd);
+          if (!visited.getAndSet(nDoc)) {
+            knnCollector.incVisitedCount(1);
+            float s = scorer.score(neighborOrd);
+
+            if (s >= minAcceptedSimilarity) {
+              candidates.add(neighborOrd, s);
+              if (acceptBits == null || acceptBits.get(nDoc)) {
+                if (knnCollector.collect(nDoc, s)) {
+                  minAcceptedSimilarity = knnCollector.minCompetitiveSimilarity();
+                }
               }
             }
           }

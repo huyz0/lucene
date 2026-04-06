@@ -43,7 +43,8 @@ import org.apache.lucene.util.hnsw.RandomVectorScorer;
 public final class LsmVecVectorsReader extends KnnVectorsReader {
 
   public static class FieldEntry {
-    public long[] nodeOffsets;
+    public int maxEdges;
+    public long edgePtr;
     public long vectorDataOffset;
     public long vectorDataLength;
     public int dimension;
@@ -107,15 +108,12 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
       while (metaInput.getFilePointer() < metaLength - metaFooterLength) {
         int fieldNumber = metaInput.readInt();
         FieldEntry entry = new FieldEntry();
-        metaInput.readLong(); // Read and ignore edgePtr
+        entry.edgePtr = metaInput.readLong();
         entry.vectorDataOffset = metaInput.readVLong();
         entry.vectorDataLength = metaInput.readVLong();
 
-        int totalOrds = metaInput.readInt();
-        entry.nodeOffsets = new long[totalOrds];
-        for (int i = 0; i < totalOrds; i++) {
-          entry.nodeOffsets[i] = metaInput.readLong();
-        }
+        metaInput.readInt(); // totalOrds
+        entry.maxEdges = metaInput.readInt();
 
         entry.dimension = metaInput.readVInt();
         entry.size = metaInput.readInt();
@@ -211,8 +209,9 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
       java.util.function.IntUnaryOperator ordToDoc)
       throws IOException {
     FieldInfo fieldInfo = segmentReadState.fieldInfos.fieldInfo(field);
-    long[] nodeOffsets = fields.get(fieldInfo.number).nodeOffsets;
-    if (nodeOffsets == null) return;
+    FieldEntry entry = fields.get(fieldInfo.number);
+    if (entry == null) return;
+    long nodeBytes = (long) (Integer.BYTES + entry.maxEdges * Integer.BYTES);
 
     int N = segmentReadState.segmentInfo.maxDoc();
     int efSearch = (int) (knnCollector.k() * 1.5);
@@ -249,10 +248,10 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
         break;
       }
 
-      edgeInput.seek(nodeOffsets[topNodeOrd]);
-      int numNeighbors = edgeInput.readVInt();
+      edgeInput.seek(entry.edgePtr + (long) topNodeOrd * nodeBytes);
+      int numNeighbors = edgeInput.readInt();
       for (int i = 0; i < numNeighbors; i++) {
-        int neighborOrd = edgeInput.readVInt();
+        int neighborOrd = edgeInput.readInt();
         int nDoc = ordToDoc.applyAsInt(neighborOrd);
         if (!visited.getAndSet(nDoc)) {
           knnCollector.incVisitedCount(1);

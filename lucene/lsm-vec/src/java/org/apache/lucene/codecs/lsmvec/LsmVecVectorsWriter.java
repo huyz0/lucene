@@ -118,7 +118,9 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
     java.util.Arrays.fill(newDocToSegment, -1);
 
     int[][] segmentOldToNewOrds = new int[mergeState.knnVectorsReaders.length][];
-    long[][] segmentNodeOffsets = new long[mergeState.knnVectorsReaders.length][];
+    int[] segmentSizes = new int[mergeState.knnVectorsReaders.length];
+    long[] segmentEdgePtrs = new long[mergeState.knnVectorsReaders.length];
+    long nodeBytes = (long) (Integer.BYTES + maxEdges * Integer.BYTES);
     IndexInput[] edgeInputs = new IndexInput[mergeState.knnVectorsReaders.length];
 
     for (int i = 0; i < mergeState.knnVectorsReaders.length; i++) {
@@ -131,7 +133,8 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
         if (entry != null) {
           segmentOldToNewOrds[i] = new int[entry.size];
           java.util.Arrays.fill(segmentOldToNewOrds[i], -1);
-          segmentNodeOffsets[i] = entry.nodeOffsets;
+          segmentSizes[i] = entry.size;
+          segmentEdgePtrs[i] = entry.edgePtr;
         }
         edgeInputs[i] = lsmReader.getVectorEdgeInput().clone();
 
@@ -179,14 +182,14 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
         }
 
         int[] hints = null;
-        if (segIndex != -1 && segmentNodeOffsets[segIndex] != null && oldOrd < segmentNodeOffsets[segIndex].length) {
+        if (segIndex != -1 && oldOrd < segmentSizes[segIndex]) {
             IndexInput edgeInput = edgeInputs[segIndex];
-            edgeInput.seek(segmentNodeOffsets[segIndex][oldOrd]);
-            int numNeighbors = edgeInput.readVInt();
+            edgeInput.seek(segmentEdgePtrs[segIndex] + (long) oldOrd * nodeBytes);
+            int numNeighbors = edgeInput.readInt();
             hints = new int[numNeighbors];
             int validHintsCount = 0;
             for (int n = 0; n < numNeighbors; n++) {
-                int neighborOldOrd = edgeInput.readVInt();
+                int neighborOldOrd = edgeInput.readInt();
                 int neighborNewOrd = segmentOldToNewOrds[segIndex][neighborOldOrd];
                 if (neighborNewOrd != -1 && neighborNewOrd < writer.currentOrd) {
                     hints[validHintsCount++] = neighborNewOrd;
@@ -229,14 +232,14 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
         }
 
         int[] hints = null;
-        if (segIndex != -1 && segmentNodeOffsets[segIndex] != null && oldOrd < segmentNodeOffsets[segIndex].length) {
+        if (segIndex != -1 && oldOrd < segmentSizes[segIndex]) {
             IndexInput edgeInput = edgeInputs[segIndex];
-            edgeInput.seek(segmentNodeOffsets[segIndex][oldOrd]);
-            int numNeighbors = edgeInput.readVInt();
+            edgeInput.seek(segmentEdgePtrs[segIndex] + (long) oldOrd * nodeBytes);
+            int numNeighbors = edgeInput.readInt();
             hints = new int[numNeighbors];
             int validHintsCount = 0;
             for (int n = 0; n < numNeighbors; n++) {
-                int neighborOldOrd = edgeInput.readVInt();
+                int neighborOldOrd = edgeInput.readInt();
                 int neighborNewOrd = segmentOldToNewOrds[segIndex][neighborOldOrd];
                 if (neighborNewOrd != -1 && neighborNewOrd < writer.currentOrd) {
                     hints[validHintsCount++] = neighborNewOrd;
@@ -373,7 +376,6 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
       // Serialize Adjacency List spanning Ordinals tightly
       int totalOrds = currentOrd;
       long edgePtr = vectorEdgeOutput.getFilePointer();
-      long[] nodeOffsets = new long[totalOrds];
       int[] neighborBuffer = new int[maxEdges];
 
       int[] oldOrdToNewOrd = null;
@@ -404,15 +406,17 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
       }
 
       for (int ord = 0; ord < totalOrds; ord++) {
-        nodeOffsets[ord] = vectorEdgeOutput.getFilePointer();
         int oldOrd = newOrdToOldOrd != null ? newOrdToOldOrd[ord] : ord;
         int validEdges = graph.getSortedNeighbors(oldOrd, neighborBuffer);
-        vectorEdgeOutput.writeVInt(validEdges);
+        vectorEdgeOutput.writeInt(validEdges);
         for (int i = 0; i < validEdges; i++) {
           int neighborOldOrd = neighborBuffer[i];
           int neighborNewOrd =
               oldOrdToNewOrd != null ? oldOrdToNewOrd[neighborOldOrd] : neighborOldOrd;
-          vectorEdgeOutput.writeVInt(neighborNewOrd);
+          vectorEdgeOutput.writeInt(neighborNewOrd);
+        }
+        for (int i = validEdges; i < maxEdges; i++) {
+          vectorEdgeOutput.writeInt(-1);
         }
       }
 
@@ -450,9 +454,7 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
       metaOutput.writeVLong(vectorDataOffset);
       metaOutput.writeVLong(vectorDataLength);
       metaOutput.writeInt(totalOrds);
-      for (int i = 0; i < totalOrds; i++) {
-        metaOutput.writeLong(nodeOffsets[i]);
-      }
+      metaOutput.writeInt(maxEdges);
       metaOutput.writeVInt(fieldInfo.getVectorDimension());
       metaOutput.writeInt(finalDocsWithField.cardinality());
       OrdToDocDISIReaderConfiguration.writeStoredMeta(

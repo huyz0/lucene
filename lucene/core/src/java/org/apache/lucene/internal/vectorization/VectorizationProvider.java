@@ -211,6 +211,7 @@ public abstract class VectorizationProvider {
           "org.apache.lucene.benchmark.jmh.VectorUtilBenchmark",
           "org.apache.lucene.codecs.hnsw.FlatVectorScorerUtil",
           "org.apache.lucene.util.VectorUtil",
+          "org.apache.lucene.util.VectorUtilFFM",
           "org.apache.lucene.codecs.lucene104.Lucene104PostingsReader",
           "org.apache.lucene.codecs.lucene104.PostingIndexInput",
           "org.apache.lucene.tests.util.TestSysoutsLimits");

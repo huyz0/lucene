@@ -1,0 +1,74 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+description = 'LSM-VEC native integration for Apache Lucene'
+
+dependencies {
+  moduleApi project(':lucene:core')
+  moduleTestImplementation project(':lucene:test-framework')
+}
+
+sourceSets {
+  main25 {
+    java {
+      srcDirs = ['src/java25']
+    }
+  }
+}
+
+configurations {
+  main25Implementation.extendsFrom(implementation)
+}
+
+dependencies {
+  main25Implementation sourceSets.main.output
+}
+
+tasks.named('compileMain25Java').configure {
+  options.compilerArgs += ["--release", "25"]
+}
+
+tasks.withType(JavaCompile) {
+  options.compilerArgs += ["--add-modules", "jdk.incubator.vector"]
+  options.compilerArgs.remove("-Xlint:incubating")
+  options.compilerArgs += ["-Xlint:-incubating"]
+}
+
+tasks.named('jar', Jar).configure {
+  into('META-INF/versions/25') {
+    from sourceSets.main25.output
+  }
+  manifest.attributes('Multi-Release': 'true')
+}
+
+tasks.withType(Test) {
+  jvmArgs += ["--add-modules", "jdk.incubator.vector"]
+  
+  // also add test coverage over the compiled java25 classes
+  classpath += sourceSets.main25.runtimeClasspath
+
+  doFirst {
+    // Disable randomized vectorsize for lsm-vec tests because it forces DefaultVectorizationProvider
+    // which completely breaks VectorUtilFFM.isSupported() and forces HeapLsmVecGraph fallbacks.
+    systemProperties.remove("tests.vectorsize")
+  }
+}
+
+tasks.withType(de.thetaphi.forbiddenapis.gradle.CheckForbiddenApis).configureEach {
+  // Allow forbidden-apis to parse lucene:core's PanamaVectorUtilSupport cleanly
+  ignoreSignaturesOfMissingClasses = true
+}

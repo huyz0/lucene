@@ -50,7 +50,7 @@ import org.apache.lucene.util.Constants;
  * overhead of ensuring MemorySegments are allocated off-heap before native calls.
  */
 @SuppressWarnings("restricted")
-final class NativeVectorUtilSupport implements VectorUtilSupport {
+final class NativeVectorUtilSupport implements VectorUtilSupport, VectorUtilSupportFFM {
 
   private final VectorUtilSupport delegateVectorUtilSupport;
 
@@ -588,5 +588,50 @@ final class NativeVectorUtilSupport implements VectorUtilSupport {
         },
         MemorySegment.ofArray(arr),
         arr.length);
+  }
+
+  @Override
+  public float dotProductFloat(MemorySegment a, MemorySegment b) {
+    if (dotProductFloat$MH != null) {
+      try {
+        return invokeFloatMethodHandle(
+            dotProductFloat$MH,
+            a,
+            b);
+      } catch (Throwable e) {
+        throw new RuntimeException("Error executing native dotProductFloat for MemorySegment", e);
+      }
+    }
+    return delegateVectorUtilSupport.dotProduct(a.toArray(ValueLayout.JAVA_FLOAT), b.toArray(ValueLayout.JAVA_FLOAT));
+  }
+
+  @Override
+  public float cosineFloat(MemorySegment a, MemorySegment b) {
+    if (cosineFloat$MH != null) {
+      try {
+        return invokeFloatMethodHandle(
+            cosineFloat$MH,
+            a,
+            b);
+      } catch (Throwable e) {
+        throw new RuntimeException("Error executing native cosineFloat for MemorySegment", e);
+      }
+    }
+    return delegateVectorUtilSupport.cosine(a.toArray(ValueLayout.JAVA_FLOAT), b.toArray(ValueLayout.JAVA_FLOAT));
+  }
+
+  @Override
+  public float squareDistanceFloat(MemorySegment a, MemorySegment b) {
+    if (squareDistanceFloat$MH != null) {
+      try {
+        return invokeFloatMethodHandle(
+            squareDistanceFloat$MH,
+            a,
+            b);
+      } catch (Throwable e) {
+        throw new RuntimeException("Error executing native squareDistanceFloat for MemorySegment", e);
+      }
+    }
+    return delegateVectorUtilSupport.squareDistance(a.toArray(ValueLayout.JAVA_FLOAT), b.toArray(ValueLayout.JAVA_FLOAT));
   }
 }

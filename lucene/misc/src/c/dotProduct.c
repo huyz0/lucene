@@ -206,6 +206,46 @@ int32_t dotProduct(int8_t vec1[], int8_t vec2[], int32_t limit) {
 }
 #endif
 
+#include <math.h>
+
+float squareDistanceFloat(float* a, float* b, int32_t limit) {
+    float res = 0.0f;
+    #ifdef __clang__
+    #pragma clang loop vectorize(assume_safety) unroll(enable)
+    #endif
+    for (int32_t i = 0; i < limit; i++) {
+        float diff = a[i] - b[i];
+        res += diff * diff;
+    }
+    return res;
+}
+
+float dotProductFloat(float* a, float* b, int32_t limit) {
+    float res = 0.0f;
+    #ifdef __clang__
+    #pragma clang loop vectorize(assume_safety) unroll(enable)
+    #endif
+    for (int32_t i = 0; i < limit; i++) {
+        res += a[i] * b[i];
+    }
+    return res;
+}
+
+float cosineFloat(float* a, float* b, int32_t limit) {
+    float sum = 0.0f;
+    float norm1 = 0.0f;
+    float norm2 = 0.0f;
+    #ifdef __clang__
+    #pragma clang loop vectorize(assume_safety) unroll(enable)
+    #endif
+    for (int32_t i = 0; i < limit; i++) {
+        sum += a[i] * b[i];
+        norm1 += a[i] * a[i];
+        norm2 += b[i] * b[i];
+    }
+    return sum / sqrt(norm1 * norm2);
+}
+
 /*
 int main(int argc, const char* args[]) {
     int DIMENSIONS = 1024;

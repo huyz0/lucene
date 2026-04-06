@@ -166,65 +166,21 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
   }
 
   public RandomVectorScorer getRandomVectorScorer(String field, float[] target) throws IOException {
-    FieldInfo fieldInfo = segmentReadState.fieldInfos.fieldInfo(field);
-    if (fieldInfo == null || !fields.containsKey(fieldInfo.number)) return null;
-    FieldEntry entry = fields.get(fieldInfo.number);
-    IndexInput dataInput = vectorDataInput.clone();
-    int dim = entry.dimension;
-    VectorSimilarityFunction similarity = fieldInfo.getVectorSimilarityFunction();
-    FloatVectorValues vectorValuesProxy = getFloatVectorValues(field);
-    return new RandomVectorScorer() {
-      float[] vector = new float[dim];
-
-      @Override
-      public float score(int nodeOrd) throws IOException {
-        long offset = entry.vectorDataOffset + (long) nodeOrd * dim * Float.BYTES;
-        dataInput.seek(offset);
-        dataInput.readFloats(vector, 0, dim);
-        return similarity.compare(target, vector);
-      }
-
-      @Override
-      public int maxOrd() {
-        return entry.size;
-      }
-
-      @Override
-      public int ordToDoc(int ord) {
-        return vectorValuesProxy.ordToDoc(ord);
-      }
-    };
+    FloatVectorValues values = getFloatVectorValues(field);
+    if (values == null) return null;
+    return flatVectorsScorer.getRandomVectorScorer(
+        segmentReadState.fieldInfos.fieldInfo(field).getVectorSimilarityFunction(),
+        values,
+        target);
   }
 
   public RandomVectorScorer getRandomVectorScorer(String field, byte[] target) throws IOException {
-    FieldInfo fieldInfo = segmentReadState.fieldInfos.fieldInfo(field);
-    if (fieldInfo == null || !fields.containsKey(fieldInfo.number)) return null;
-    FieldEntry entry = fields.get(fieldInfo.number);
-    IndexInput dataInput = vectorDataInput.clone();
-    int dim = entry.dimension;
-    VectorSimilarityFunction similarity = fieldInfo.getVectorSimilarityFunction();
-    ByteVectorValues vectorValuesProxy = getByteVectorValues(field);
-    return new RandomVectorScorer() {
-      byte[] vector = new byte[dim];
-
-      @Override
-      public float score(int nodeOrd) throws IOException {
-        long offset = entry.vectorDataOffset + (long) nodeOrd * dim;
-        dataInput.seek(offset);
-        dataInput.readBytes(vector, 0, dim);
-        return similarity.compare(target, vector);
-      }
-
-      @Override
-      public int maxOrd() {
-        return entry.size;
-      }
-
-      @Override
-      public int ordToDoc(int ord) {
-        return vectorValuesProxy.ordToDoc(ord);
-      }
-    };
+    ByteVectorValues values = getByteVectorValues(field);
+    if (values == null) return null;
+    return flatVectorsScorer.getRandomVectorScorer(
+        segmentReadState.fieldInfos.fieldInfo(field).getVectorSimilarityFunction(),
+        values,
+        target);
   }
 
   @Override

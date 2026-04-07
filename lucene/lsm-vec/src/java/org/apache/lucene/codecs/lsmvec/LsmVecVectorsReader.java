@@ -200,7 +200,7 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
     if (scorer == null) return;
     FloatVectorValues values = getFloatVectorValues(field);
     if (values == null) return;
-    doSearch(field, scorer, knnCollector, acceptDocs, values::ordToDoc);
+    doSearch(field, scorer, knnCollector, acceptDocs, values, values::ordToDoc);
   }
 
   @Override
@@ -210,7 +210,7 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
     if (scorer == null) return;
     ByteVectorValues values = getByteVectorValues(field);
     if (values == null) return;
-    doSearch(field, scorer, knnCollector, acceptDocs, values::ordToDoc);
+    doSearch(field, scorer, knnCollector, acceptDocs, values, values::ordToDoc);
   }
 
   private void doSearch(
@@ -218,6 +218,7 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
       RandomVectorScorer scorer,
       KnnCollector knnCollector,
       AcceptDocs acceptDocs,
+      Object vectorValues,
       java.util.function.IntUnaryOperator ordToDoc)
       throws IOException {
     FieldInfo fieldInfo = segmentReadState.fieldInfos.fieldInfo(field);
@@ -227,6 +228,7 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
 
     int N = segmentReadState.segmentInfo.maxDoc();
     int efSearch = (int) (knnCollector.k() * 1.5);
+    int[] neighborBuffer = new int[entry.maxEdges];
 
     org.apache.lucene.util.SparseFixedBitSet visited =
         new org.apache.lucene.util.SparseFixedBitSet(N);
@@ -262,6 +264,11 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
 
       if (topNodeOrd == 0 && entry.entryNeighbors != null) {
         int numNeighbors = entry.entryNeighbors.length;
+        if (vectorValues instanceof org.apache.lucene.codecs.lucene95.OffHeapFloatVectorValues floatValues) {
+            floatValues.prefetch(entry.entryNeighbors, numNeighbors);
+        } else if (vectorValues instanceof org.apache.lucene.codecs.lucene95.OffHeapByteVectorValues byteValues) {
+            byteValues.prefetch(entry.entryNeighbors, numNeighbors);
+        }
         for (int i = 0; i < numNeighbors; i++) {
           int neighborOrd = entry.entryNeighbors[i];
           int nDoc = ordToDoc.applyAsInt(neighborOrd);
@@ -282,8 +289,14 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
       } else {
         edgeInput.seek(entry.edgePtr + (long) topNodeOrd * nodeBytes);
         int numNeighbors = edgeInput.readInt();
+        edgeInput.readInts(neighborBuffer, 0, numNeighbors);
+        if (vectorValues instanceof org.apache.lucene.codecs.lucene95.OffHeapFloatVectorValues floatValues) {
+            floatValues.prefetch(neighborBuffer, numNeighbors);
+        } else if (vectorValues instanceof org.apache.lucene.codecs.lucene95.OffHeapByteVectorValues byteValues) {
+            byteValues.prefetch(neighborBuffer, numNeighbors);
+        }
         for (int i = 0; i < numNeighbors; i++) {
-          int neighborOrd = edgeInput.readInt();
+          int neighborOrd = neighborBuffer[i];
           int nDoc = ordToDoc.applyAsInt(neighborOrd);
           if (!visited.getAndSet(nDoc)) {
             knnCollector.incVisitedCount(1);

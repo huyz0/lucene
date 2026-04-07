@@ -20,6 +20,8 @@ description = 'LSM-VEC native integration for Apache Lucene'
 dependencies {
   moduleApi project(':lucene:core')
   moduleTestImplementation project(':lucene:test-framework')
+  moduleTestImplementation deps.jmh.core
+  testAnnotationProcessor deps.jmh.annprocess
 }
 
 sourceSets {

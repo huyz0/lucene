@@ -156,31 +156,44 @@ public final class NativeLsmVecGraph extends LsmVecGraph {
       MemorySegment targetBlock = blocks.get(targetBlockId);
       MemorySegment targetSlice = targetBlock.asSlice((long) targetBlockOff * Float.BYTES, (long) vectorDimension * Float.BYTES);
 
-      for (int i = 0; i < count; i++) {
-        int bOrd = neighborOrds[i];
-        int bBlockId = bOrd / vectorsPerBlock;
-        int bBlockOff = (bOrd % vectorsPerBlock) * vectorDimension;
-        MemorySegment blockB = blocks.get(bBlockId);
-        MemorySegment sliceB = blockB.asSlice((long) bBlockOff * Float.BYTES, (long) vectorDimension * Float.BYTES);
-
-        if (similarityFunction == VectorSimilarityFunction.EUCLIDEAN) {
+      if (similarityFunction == VectorSimilarityFunction.EUCLIDEAN) {
+        for (int i = 0; i < count; i++) {
+          int bOrd = neighborOrds[i];
+          int bBlockId = bOrd / vectorsPerBlock;
+          int bBlockOff = (bOrd % vectorsPerBlock) * vectorDimension;
+          MemorySegment sliceB = blocks.get(bBlockId).asSlice((long) bBlockOff * Float.BYTES, (long) vectorDimension * Float.BYTES);
           float score = VectorUtilFFM.squareDistanceFloat(targetSlice, sliceB);
           outScores[i] = 1.0f / (1.0f + score);
-        } else if (similarityFunction == VectorSimilarityFunction.COSINE
-            || similarityFunction == VectorSimilarityFunction.DOT_PRODUCT) {
+        }
+      } else if (similarityFunction == VectorSimilarityFunction.COSINE) {
+        for (int i = 0; i < count; i++) {
+          int bOrd = neighborOrds[i];
+          int bBlockId = bOrd / vectorsPerBlock;
+          int bBlockOff = (bOrd % vectorsPerBlock) * vectorDimension;
+          MemorySegment sliceB = blocks.get(bBlockId).asSlice((long) bBlockOff * Float.BYTES, (long) vectorDimension * Float.BYTES);
           float score = VectorUtilFFM.dotProductFloat(targetSlice, sliceB);
-          if (similarityFunction == VectorSimilarityFunction.COSINE) {
-            outScores[i] = Math.max((1.0f + score) / 2.0f, 0.0f);
-          } else {
-            outScores[i] = score;
-          }
-        } else if (similarityFunction == VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT) {
+          outScores[i] = Math.max((1.0f + score) / 2.0f, 0.0f);
+        }
+      } else if (similarityFunction == VectorSimilarityFunction.DOT_PRODUCT) {
+        for (int i = 0; i < count; i++) {
+          int bOrd = neighborOrds[i];
+          int bBlockId = bOrd / vectorsPerBlock;
+          int bBlockOff = (bOrd % vectorsPerBlock) * vectorDimension;
+          MemorySegment sliceB = blocks.get(bBlockId).asSlice((long) bBlockOff * Float.BYTES, (long) vectorDimension * Float.BYTES);
+          outScores[i] = VectorUtilFFM.dotProductFloat(targetSlice, sliceB);
+        }
+      } else if (similarityFunction == VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT) {
+        for (int i = 0; i < count; i++) {
+          int bOrd = neighborOrds[i];
+          int bBlockId = bOrd / vectorsPerBlock;
+          int bBlockOff = (bOrd % vectorsPerBlock) * vectorDimension;
+          MemorySegment sliceB = blocks.get(bBlockId).asSlice((long) bBlockOff * Float.BYTES, (long) vectorDimension * Float.BYTES);
           float score = VectorUtilFFM.dotProductFloat(targetSlice, sliceB);
           if (score < 0) outScores[i] = 1.0f / (1.0f - score);
           else outScores[i] = score + 1.0f;
-        } else {
-           throw new UnsupportedOperationException("Similarity function natively unsupported!");
         }
+      } else {
+        throw new UnsupportedOperationException("Similarity function natively unsupported!");
       }
     } else {
       throw new UnsupportedOperationException("Native byte vector similarity function natively unsupported directly from MemorySegments!");

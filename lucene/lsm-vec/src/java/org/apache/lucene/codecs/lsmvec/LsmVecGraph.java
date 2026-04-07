@@ -210,8 +210,7 @@ public abstract class LsmVecGraph {
 
       boolean isDiverse = true;
       if (selectedCount > 0) {
-        System.arraycopy(selectedBuffer, 0, scratchBulkNodes, 0, selectedCount);
-        bulkComputeDistance(cand, scratchBulkNodes, scratchBulkScores, selectedCount);
+        bulkComputeDistance(cand, selectedBuffer, scratchBulkScores, selectedCount);
         float candToDoc = candScore;
         for (int j = 0; j < selectedCount; j++) {
           float candToSel = scratchBulkScores[j];

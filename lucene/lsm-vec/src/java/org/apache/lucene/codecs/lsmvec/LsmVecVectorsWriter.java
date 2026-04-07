@@ -21,12 +21,14 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.KnnFieldVectorsWriter;
+import org.apache.lucene.codecs.KnnVectorsReader;
 import org.apache.lucene.codecs.KnnVectorsWriter;
 import org.apache.lucene.codecs.lucene95.OrdToDocDISIReaderConfiguration;
 import org.apache.lucene.index.ByteVectorValues;
 import org.apache.lucene.index.DocsWithFieldSet;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FloatVectorValues;
+import org.apache.lucene.index.KnnVectorValues;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.MergeState.DocMap;
 import org.apache.lucene.index.SegmentWriteState;
@@ -35,6 +37,7 @@ import org.apache.lucene.index.VectorEncoding;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
+import org.apache.lucene.util.IOUtils;
 
 public final class LsmVecVectorsWriter extends KnnVectorsWriter {
 
@@ -81,7 +84,7 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
       success = true;
     } finally {
       if (!success) {
-        org.apache.lucene.util.IOUtils.closeWhileHandlingException(metaOut, edgeOut, dataOut);
+        IOUtils.closeWhileHandlingException(metaOut, edgeOut, dataOut);
       }
     }
   }
@@ -124,9 +127,9 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
     IndexInput[] edgeInputs = new IndexInput[mergeState.knnVectorsReaders.length];
 
     for (int i = 0; i < mergeState.knnVectorsReaders.length; i++) {
-      org.apache.lucene.codecs.KnnVectorsReader reader = mergeState.knnVectorsReaders[i];
+      KnnVectorsReader reader = mergeState.knnVectorsReaders[i];
       if (reader == null) continue;
-      
+
       reader = reader.unwrapReaderForField(fieldInfo.name);
       if (reader instanceof LsmVecVectorsReader lsmReader) {
         LsmVecVectorsReader.FieldEntry entry = lsmReader.getFieldEntry(fieldInfo.name);
@@ -141,13 +144,13 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
         DocMap docMap = mergeState.docMaps[i];
 
         int count = 0;
-        org.apache.lucene.index.KnnVectorValues oldValues =
+        KnnVectorValues oldValues =
             fieldInfo.getVectorEncoding() == VectorEncoding.FLOAT32
                 ? lsmReader.getFloatVectorValues(fieldInfo.name)
                 : lsmReader.getByteVectorValues(fieldInfo.name);
 
         if (oldValues == null) continue;
-        org.apache.lucene.index.KnnVectorValues.DocIndexIterator oldIter = oldValues.iterator();
+        KnnVectorValues.DocIndexIterator oldIter = oldValues.iterator();
         for (int oldDoc = oldIter.nextDoc();
             oldDoc != DocIdSetIterator.NO_MORE_DOCS;
             oldDoc = oldIter.nextDoc()) {
@@ -169,7 +172,7 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
     if (fieldInfo.getVectorEncoding() == VectorEncoding.FLOAT32) {
       FloatVectorValues mergedFloats =
           MergedVectorValues.mergeFloatVectorValues(fieldInfo, mergeState);
-      org.apache.lucene.index.KnnVectorValues.DocIndexIterator iter = mergedFloats.iterator();
+      KnnVectorValues.DocIndexIterator iter = mergedFloats.iterator();
       for (int doc = iter.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = iter.nextDoc()) {
         float[] vectorValue = mergedFloats.vectorValue(iter.index());
         int segIndex = newDocToSegment[doc];
@@ -219,7 +222,7 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
     } else {
       ByteVectorValues mergedBytes =
           MergedVectorValues.mergeByteVectorValues(fieldInfo, mergeState);
-      org.apache.lucene.index.KnnVectorValues.DocIndexIterator iter = mergedBytes.iterator();
+      KnnVectorValues.DocIndexIterator iter = mergedBytes.iterator();
       for (int doc = iter.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = iter.nextDoc()) {
         byte[] vectorValue = mergedBytes.vectorValue(iter.index());
         int segIndex = newDocToSegment[doc];
@@ -283,7 +286,7 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
 
   @Override
   public void close() throws IOException {
-    org.apache.lucene.util.IOUtils.close(metaOutput, vectorEdgeOutput, vectorDataOutput);
+    IOUtils.close(metaOutput, vectorEdgeOutput, vectorDataOutput);
   }
 
   @Override
@@ -387,7 +390,7 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
         newOrdToOldOrd = new int[totalOrds];
 
         long[] newDocAndOldOrd = new long[totalOrds];
-        org.apache.lucene.search.DocIdSetIterator iter = docsWithField.iterator();
+        DocIdSetIterator iter = docsWithField.iterator();
         for (int oldOrd = 0; oldOrd < totalOrds; oldOrd++) {
           int oldDocID = iter.nextDoc();
           int newDocID = sortMap.oldToNew(oldDocID);

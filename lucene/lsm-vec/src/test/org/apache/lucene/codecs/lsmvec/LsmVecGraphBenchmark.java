@@ -19,8 +19,6 @@ package org.apache.lucene.codecs.lsmvec;
 import java.io.IOException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import org.apache.lucene.codecs.lsmvec.LsmVecGraph;
-import org.apache.lucene.codecs.lsmvec.LsmVecGraphProvider;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.VectorEncoding;
@@ -48,13 +46,13 @@ public class LsmVecGraphBenchmark {
 
   private float[][] floatVectors;
   private FieldInfo fieldInfo;
-  
+
   @Param({"32"})
   int maxEdges;
 
   @Param({"100"})
   int efConstruction;
-  
+
   @Param({"128"})
   int vectorDimension;
 
@@ -70,7 +68,7 @@ public class LsmVecGraphBenchmark {
         floatVectors[i][j] = random.nextFloat();
       }
     }
-    
+
     fieldInfo = new FieldInfo(
         "vector_field",
         1,
@@ -91,7 +89,7 @@ public class LsmVecGraphBenchmark {
   public void buildLsmVecGraph() throws IOException {
     int vectorsPerBlock = Math.max(1, (1024 * 1024) / (vectorDimension * Float.BYTES));
     LsmVecGraph graph = LsmVecGraphProvider.getInstance().getGraph(maxEdges, efConstruction, fieldInfo, vectorDimension, vectorsPerBlock);
-    
+
     for (int i = 0; i < numVectors; i++) {
       graph.setVectorValue(i, floatVectors[i]);
       graph.addNode(i, i);

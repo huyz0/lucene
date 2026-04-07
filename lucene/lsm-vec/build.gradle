@@ -59,7 +59,7 @@ tasks.named('jar', Jar).configure {
 
 tasks.withType(Test) {
   jvmArgs += ["--add-modules", "jdk.incubator.vector"]
-  
+
   // also add test coverage over the compiled java25 classes
   classpath += sourceSets.main25.runtimeClasspath
 

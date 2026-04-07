@@ -35,17 +35,13 @@ import org.apache.lucene.index.SegmentWriteState;
 public final class LsmVecVectorsFormat extends KnnVectorsFormat {
 
   public static final String NAME = "LsmVec";
-
+  public static final int DEFAULT_MAX_EDGES = 32;
+  public static final int DEFAULT_EF_CONSTRUCTION = 100;
   // Extension for the Vector Edge Metadata graph
   static final String VEM_EXTENSION = "vem";
   static final String VEM_META_EXTENSION = "vma";
-
   // Extension for the pristine flat vector data directly
   static final String VECD_EXTENSION = "vecd";
-
-  public static final int DEFAULT_MAX_EDGES = 32;
-  public static final int DEFAULT_EF_CONSTRUCTION = 100;
-
   private final int maxEdges;
   private final int efConstruction;
 

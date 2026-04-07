@@ -19,8 +19,6 @@ package org.apache.lucene.codecs.lsmvec;
 import java.io.IOException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import org.apache.lucene.codecs.lsmvec.LsmVecGraph;
-import org.apache.lucene.codecs.lsmvec.LsmVecGraphProvider;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.VectorEncoding;
@@ -52,14 +50,13 @@ public class LsmVecWriterBenchmark {
 
   private LsmVecGraph graph;
   private Directory dir;
-  private FieldInfo fieldInfo;
-  
+
   @Param({"32"})
   int maxEdges;
 
   @Param({"100"})
   int efConstruction;
-  
+
   @Param({"128"})
   int vectorDimension;
 
@@ -69,7 +66,7 @@ public class LsmVecWriterBenchmark {
   @Setup(Level.Trial)
   public void init() throws IOException {
     dir = new ByteBuffersDirectory();
-    fieldInfo = new FieldInfo(
+    FieldInfo fieldInfo = new FieldInfo(
         "vector_field",
         1,
         false, false, false,
@@ -91,10 +88,11 @@ public class LsmVecWriterBenchmark {
         floatVectors[i][j] = random.nextFloat();
       }
     }
-    
+
     int vectorsPerBlock = Math.max(1, (1024 * 1024) / (vectorDimension * Float.BYTES));
-    graph = LsmVecGraphProvider.getInstance().getGraph(maxEdges, efConstruction, fieldInfo, vectorDimension, vectorsPerBlock);
-    
+    graph = LsmVecGraphProvider.getInstance().getGraph(maxEdges, efConstruction,
+        fieldInfo, vectorDimension, vectorsPerBlock);
+
     for (int i = 0; i < numVectors; i++) {
         graph.setVectorValue(i, floatVectors[i]);
         graph.addNode(i, i);
@@ -105,12 +103,12 @@ public class LsmVecWriterBenchmark {
   public void flushGraphBytes() throws IOException {
       IndexOutput vectorDataOutput = dir.createOutput("test.vecd", IOContext.DEFAULT);
       IndexOutput vectorEdgeOutput = dir.createOutput("test.vem", IOContext.DEFAULT);
-      
+
       int nodeBytes = Integer.highestOneBit((Integer.BYTES + maxEdges * Integer.BYTES) - 1) << 1;
       byte[] paddingBytesArr = new byte[nodeBytes];
       java.util.Arrays.fill(paddingBytesArr, (byte) 0xFF);
       int[] neighborBuffer = new int[maxEdges];
-      
+
       for (int ord = 0; ord < numVectors; ord++) {
           int validEdges = graph.getSortedNeighbors(ord, neighborBuffer);
           vectorEdgeOutput.writeInt(validEdges);
@@ -122,7 +120,7 @@ public class LsmVecWriterBenchmark {
               vectorEdgeOutput.writeBytes(paddingBytesArr, 0, paddingBytes);
           }
       }
-      
+
       vectorDataOutput.close();
       vectorEdgeOutput.close();
       dir.deleteFile("test.vecd");

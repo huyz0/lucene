@@ -28,26 +28,16 @@ import org.apache.lucene.index.FieldInfo;
  */
 public abstract class LsmVecGraphProvider {
 
+  LsmVecGraphProvider() {
+    // no instance/subclass except from this package
+  }
+
   /**
    * Returns the default instance of the provider matching native possibilities of actual runtime.
    */
   public static LsmVecGraphProvider getInstance() {
     return Objects.requireNonNull(Holder.INSTANCE, "call to getInstance() from subclass");
   }
-
-  LsmVecGraphProvider() {
-    // no instance/subclass except from this package
-  }
-
-  /** Returns an implementation of LsmVecGraph configured with the given parameters. */
-  public abstract LsmVecGraph getGraph(
-      int maxEdges,
-      int efConstruction,
-      FieldInfo fieldInfo,
-      int vectorDimension,
-      int vectorsPerBlock);
-
-  // *** Lookup mechanism: ***
 
   static LsmVecGraphProvider lookup() {
     final String className = "Jdk25LsmVecGraphProvider";
@@ -67,10 +57,20 @@ public abstract class LsmVecGraphProvider {
     }
   }
 
+  // *** Lookup mechanism: ***
+
+  /** Returns an implementation of LsmVecGraph configured with the given parameters. */
+  public abstract LsmVecGraph getGraph(
+      int maxEdges,
+      int efConstruction,
+      FieldInfo fieldInfo,
+      int vectorDimension,
+      int vectorsPerBlock);
+
   /** This static holder class prevents classloading deadlock. */
   private static final class Holder {
-    private Holder() {}
-
     static final LsmVecGraphProvider INSTANCE = lookup();
+
+    private Holder() {}
   }
 }

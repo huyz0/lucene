@@ -36,6 +36,8 @@ public abstract class LsmVecGraph {
   protected final VectorEncoding encoding;
   protected final int vectorDimension;
   protected final int vectorsPerBlock;
+  protected final int[] scratchBulkNodes;
+  protected final float[] scratchBulkScores;
   private final int efConstruction;
   private final NeighborQueue candidates;
   private final NeighborQueue results;
@@ -43,14 +45,11 @@ public abstract class LsmVecGraph {
   private final float[] sortedScoresBuffer;
   private final int[] selectedBuffer;
   private final float[] selectedScoresBuffer;
-  protected final int[] scratchBulkNodes;
-  protected final float[] scratchBulkScores;
-
+  private final int maxEdges;
   // A 1D flattened array spanning maxDocs * maxEdges exclusively without headers!
   private int[] nodes;
   private float[] edgeScores;
   private int size;
-  private final int maxEdges;
   private int maxDoc;
   private int entryPoint = -1;
   private int[] visitedNodes;

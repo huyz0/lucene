@@ -17,21 +17,21 @@
 package org.apache.lucene.codecs.lsmvec;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import org.apache.lucene.codecs.lsmvec.LsmVecGraph;
-import org.apache.lucene.codecs.lsmvec.LsmVecGraphProvider;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.VectorEncoding;
 import org.apache.lucene.index.VectorSimilarityFunction;
-import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.Directory;
-import java.nio.file.Files;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
-import org.apache.lucene.codecs.lsmvec.LsmVecVectorsReader;
+import org.apache.lucene.store.MMapDirectory;
+import org.apache.lucene.util.BitSet;
+import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.hnsw.NeighborQueue;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -44,10 +44,6 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
-import org.apache.lucene.util.hnsw.HnswGraphSearcher;
-import org.apache.lucene.util.hnsw.NeighborQueue;
-import org.apache.lucene.util.BitSet;
-import org.apache.lucene.util.FixedBitSet;
 
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
@@ -56,20 +52,17 @@ import org.apache.lucene.util.FixedBitSet;
 @Measurement(iterations = 4, time = 1)
 @Fork(value = 1, jvmArgsAppend = {"-Xmx4g", "-Xms4g", "-XX:+AlwaysPreTouch", "--add-modules=jdk.incubator.vector"})
 public class LsmVecReaderBenchmark {
-
-  private Directory dir;
-  private FieldInfo fieldInfo;
   private IndexInput edgeInput;
   private int[] entryNeighbors;
   private long nodeBytes;
   private int[] fetchBuffer;
-  
+
   @Param({"32"})
   int maxEdges;
 
   @Param({"100"})
   int efConstruction;
-  
+
   @Param({"128"})
   int vectorDimension;
 
@@ -78,8 +71,8 @@ public class LsmVecReaderBenchmark {
 
   @Setup(Level.Trial)
   public void init() throws IOException {
-    dir = new MMapDirectory(Files.createTempDirectory("lsmvec_bench_"));
-    fieldInfo = new FieldInfo(
+    Directory dir = new MMapDirectory(Files.createTempDirectory("lsmvec_bench_"));
+    FieldInfo fieldInfo = new FieldInfo(
         "vector_field",
         1,
         false, false, false,
@@ -101,22 +94,23 @@ public class LsmVecReaderBenchmark {
         floatVectors[i][j] = random.nextFloat();
       }
     }
-    
+
     int vectorsPerBlock = Math.max(1, (1024 * 1024) / (vectorDimension * Float.BYTES));
-    LsmVecGraph graph = LsmVecGraphProvider.getInstance().getGraph(maxEdges, efConstruction, fieldInfo, vectorDimension, vectorsPerBlock);
-    
+    LsmVecGraph graph = LsmVecGraphProvider.getInstance().getGraph(maxEdges, efConstruction,
+        fieldInfo, vectorDimension, vectorsPerBlock);
+
     for (int i = 0; i < numVectors; i++) {
         graph.setVectorValue(i, floatVectors[i]);
         graph.addNode(i, i);
     }
-    
+
     IndexOutput vectorEdgeOutput = dir.createOutput("test.vem", IOContext.DEFAULT);
-    
+
     nodeBytes = Integer.highestOneBit((Integer.BYTES + maxEdges * Integer.BYTES) - 1) << 1;
     byte[] paddingBytesArr = new byte[(int) nodeBytes];
     java.util.Arrays.fill(paddingBytesArr, (byte) 0xFF);
     int[] neighborBuffer = new int[maxEdges];
-    
+
     for (int ord = 0; ord < numVectors; ord++) {
         int validEdges = graph.getSortedNeighbors(ord, neighborBuffer);
         vectorEdgeOutput.writeInt(validEdges);
@@ -129,9 +123,9 @@ public class LsmVecReaderBenchmark {
         }
     }
     vectorEdgeOutput.close();
-    
+
     edgeInput = dir.openInput("test.vem", IOContext.DEFAULT);
-    
+
     edgeInput.seek(0);
     int entryNumNeighbors = edgeInput.readInt();
     entryNeighbors = new int[entryNumNeighbors];
@@ -147,7 +141,7 @@ public class LsmVecReaderBenchmark {
       NeighborQueue candidates = new NeighborQueue(topK, false);
       NeighborQueue results = new NeighborQueue(topK, false);
       BitSet visited = new FixedBitSet(numVectors);
-      
+
       int entryDoc = 0;
       float minAcceptedSimilarity = Float.NEGATIVE_INFINITY;
 

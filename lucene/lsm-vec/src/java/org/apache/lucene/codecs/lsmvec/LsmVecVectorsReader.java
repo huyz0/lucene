@@ -29,11 +29,13 @@ import org.apache.lucene.index.ByteVectorValues;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.SegmentReadState;
-import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.search.AcceptDocs;
 import org.apache.lucene.search.KnnCollector;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.SparseFixedBitSet;
+import org.apache.lucene.util.hnsw.NeighborQueue;
 import org.apache.lucene.util.hnsw.RandomVectorScorer;
 
 /**
@@ -51,6 +53,7 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
     public int dimension;
     public int size;
     public OrdToDocDISIReaderConfiguration ordToDoc;
+    public volatile int[][] edgeCache;
   }
 
   public FieldEntry getFieldEntry(int fieldNumber) {
@@ -129,6 +132,7 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
                 entry.entryNeighbors[i] = initEdgeInput.readInt();
             }
         }
+        entry.edgeCache = new int[Math.min(entry.size, 1024)][];
 
         fields.put(fieldNumber, entry);
       }
@@ -228,12 +232,12 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
 
     int N = segmentReadState.segmentInfo.maxDoc();
     int efSearch = (int) (knnCollector.k() * 1.5);
-    int[] neighborBuffer = new int[entry.maxEdges];
+    int maxEdgesToScore = Math.max(entry.maxEdges, entry.entryNeighbors == null ? 0 : entry.entryNeighbors.length);
+    int[] neighborBuffer = new int[maxEdgesToScore];
+    float[] scoreBuffer = new float[maxEdgesToScore];
 
-    org.apache.lucene.util.SparseFixedBitSet visited =
-        new org.apache.lucene.util.SparseFixedBitSet(N);
-    org.apache.lucene.util.hnsw.NeighborQueue candidates =
-        new org.apache.lucene.util.hnsw.NeighborQueue(efSearch, true);
+    SparseFixedBitSet visited = new SparseFixedBitSet(N);
+    NeighborQueue candidates = new NeighborQueue(efSearch, true);
     IndexInput edgeInput = vectorEdgeInput.clone();
     Bits acceptBits = acceptDocs == null ? null : acceptDocs.bits();
 
@@ -264,17 +268,29 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
 
       if (topNodeOrd == 0 && entry.entryNeighbors != null) {
         int numNeighbors = entry.entryNeighbors.length;
-        if (vectorValues instanceof org.apache.lucene.codecs.lucene95.OffHeapFloatVectorValues floatValues) {
+        if (vectorValues instanceof OffHeapFloatVectorValues floatValues) {
             floatValues.prefetch(entry.entryNeighbors, numNeighbors);
-        } else if (vectorValues instanceof org.apache.lucene.codecs.lucene95.OffHeapByteVectorValues byteValues) {
+        } else if (vectorValues instanceof OffHeapByteVectorValues byteValues) {
             byteValues.prefetch(entry.entryNeighbors, numNeighbors);
         }
+
+        int numUnvisited = 0;
         for (int i = 0; i < numNeighbors; i++) {
           int neighborOrd = entry.entryNeighbors[i];
           int nDoc = ordToDoc.applyAsInt(neighborOrd);
-          if (!visited.getAndSet(nDoc)) {
+          if (!visited.get(nDoc)) {
+            neighborBuffer[numUnvisited++] = neighborOrd;
+          }
+        }
+
+        if (numUnvisited > 0) {
+          scorer.bulkScore(neighborBuffer, scoreBuffer, numUnvisited);
+          for (int i = 0; i < numUnvisited; i++) {
+            int neighborOrd = neighborBuffer[i];
+            int nDoc = ordToDoc.applyAsInt(neighborOrd);
+            visited.set(nDoc);
             knnCollector.incVisitedCount(1);
-            float s = scorer.score(neighborOrd);
+            float s = scoreBuffer[i];
 
             if (s >= minAcceptedSimilarity) {
               candidates.add(neighborOrd, s);
@@ -287,20 +303,48 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
           }
         }
       } else {
-        edgeInput.seek(entry.edgePtr + (long) topNodeOrd * nodeBytes);
-        int numNeighbors = edgeInput.readInt();
-        edgeInput.readInts(neighborBuffer, 0, numNeighbors);
-        if (vectorValues instanceof org.apache.lucene.codecs.lucene95.OffHeapFloatVectorValues floatValues) {
+        int[] cachedEdges = null;
+        if (topNodeOrd < entry.edgeCache.length) {
+          cachedEdges = entry.edgeCache[topNodeOrd];
+        }
+
+        int numNeighbors;
+        if (cachedEdges != null) {
+          numNeighbors = cachedEdges.length;
+          System.arraycopy(cachedEdges, 0, neighborBuffer, 0, numNeighbors);
+        } else {
+          edgeInput.seek(entry.edgePtr + (long) topNodeOrd * nodeBytes);
+          numNeighbors = edgeInput.readInt();
+          edgeInput.readInts(neighborBuffer, 0, numNeighbors);
+          if (topNodeOrd < entry.edgeCache.length) {
+            cachedEdges = new int[numNeighbors];
+            System.arraycopy(neighborBuffer, 0, cachedEdges, 0, numNeighbors);
+            entry.edgeCache[topNodeOrd] = cachedEdges;
+          }
+        }
+        if (vectorValues instanceof OffHeapFloatVectorValues floatValues) {
             floatValues.prefetch(neighborBuffer, numNeighbors);
-        } else if (vectorValues instanceof org.apache.lucene.codecs.lucene95.OffHeapByteVectorValues byteValues) {
+        } else if (vectorValues instanceof OffHeapByteVectorValues byteValues) {
             byteValues.prefetch(neighborBuffer, numNeighbors);
         }
+
+        int numUnvisited = 0;
         for (int i = 0; i < numNeighbors; i++) {
           int neighborOrd = neighborBuffer[i];
           int nDoc = ordToDoc.applyAsInt(neighborOrd);
-          if (!visited.getAndSet(nDoc)) {
+          if (!visited.get(nDoc)) {
+            neighborBuffer[numUnvisited++] = neighborOrd;
+          }
+        }
+
+        if (numUnvisited > 0) {
+          scorer.bulkScore(neighborBuffer, scoreBuffer, numUnvisited);
+          for (int i = 0; i < numUnvisited; i++) {
+            int neighborOrd = neighborBuffer[i];
+            int nDoc = ordToDoc.applyAsInt(neighborOrd);
+            visited.set(nDoc);
             knnCollector.incVisitedCount(1);
-            float s = scorer.score(neighborOrd);
+            float s = scoreBuffer[i];
 
             if (s >= minAcceptedSimilarity) {
               candidates.add(neighborOrd, s);
@@ -325,6 +369,6 @@ public final class LsmVecVectorsReader extends KnnVectorsReader {
 
   @Override
   public void close() throws IOException {
-    org.apache.lucene.util.IOUtils.close(metaInput, vectorEdgeInput, vectorDataInput);
+    IOUtils.close(metaInput, vectorEdgeInput, vectorDataInput);
   }
 }

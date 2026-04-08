@@ -199,5 +199,15 @@ public final class NativeLsmVecGraph extends LsmVecGraph {
       throw new UnsupportedOperationException("Native byte vector similarity function natively unsupported directly from MemorySegments!");
     }
   }
+
+  @Override
+  public long ramBytesUsed() {
+    long bytes = super.ramBytesUsed();
+    long bytesPerBlock = encoding == VectorEncoding.FLOAT32 ?
+        (long) vectorsPerBlock * vectorDimension * Float.BYTES :
+        (long) vectorsPerBlock * vectorDimension * Byte.BYTES;
+    bytes += (long) blocks.size() * bytesPerBlock;
+    return bytes;
+  }
 }
 

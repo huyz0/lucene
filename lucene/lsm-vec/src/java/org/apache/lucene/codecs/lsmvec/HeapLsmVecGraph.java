@@ -143,4 +143,17 @@ public final class HeapLsmVecGraph extends LsmVecGraph {
       }
     }
   }
+
+  @Override
+  public long ramBytesUsed() {
+    long bytes = super.ramBytesUsed();
+    if (encoding == VectorEncoding.FLOAT32) {
+      bytes += floatVectors.length * (long) org.apache.lucene.util.RamUsageEstimator.NUM_BYTES_OBJECT_REF;
+      bytes += size() * (long) vectorDimension * Float.BYTES;
+    } else {
+      bytes += byteVectors.length * (long) org.apache.lucene.util.RamUsageEstimator.NUM_BYTES_OBJECT_REF;
+      bytes += size() * (long) vectorDimension * Byte.BYTES;
+    }
+    return bytes;
+  }
 }

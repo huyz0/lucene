@@ -482,7 +482,7 @@ public final class LsmVecVectorsWriter extends KnnVectorsWriter {
 
     @Override
     public long ramBytesUsed() {
-      return graph.ramBytesUsed();
+      return graph.ramBytesUsed() + docsWithField.ramBytesUsed();
     }
   }
 }
